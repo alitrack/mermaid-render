@@ -1,8 +1,8 @@
 [package]
 name = "mermaid-rs"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
-description = "Pure Rust Mermaid diagram parser and SVG renderer"
+description = "Pure Rust Mermaid diagram parser and SVG renderer — zero JS, zero Node"
 license = "MIT"
 repository = "https://github.com/alitrack/mermaid-rs"
 keywords = ["mermaid", "diagram", "svg", "renderer"]
