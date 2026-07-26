@@ -48,11 +48,12 @@ pub struct LayoutEngine<'a, T: TextMeasure> {
     pub edge_label_padding: f32,
     pub node_padding_h: f32,
     pub node_padding_v: f32,
+    pub max_node_width: f32,
 }
 
 impl<'a, T: TextMeasure> LayoutEngine<'a, T> {
     pub fn new(measure: &'a mut T, font_size: f32) -> Self {
-        Self { measure, font_size, node_spacing_x: 64.0, node_spacing_y: 72.0, edge_label_padding: 8.0, node_padding_h: 18.0, node_padding_v: 12.0 }
+        Self { measure, font_size, node_spacing_x: 64.0, node_spacing_y: 72.0, edge_label_padding: 8.0, node_padding_h: 18.0, node_padding_v: 12.0, max_node_width: 280.0 }
     }
 
     fn text_w(&mut self, text: &str, fs: f32, code: bool, bold: bool, italic: bool) -> f32 {
@@ -66,13 +67,47 @@ impl<'a, T: TextMeasure> LayoutEngine<'a, T> {
         (mw, lc)
     }
 
+    pub fn wrap_text(&mut self, text: &str, max_width: f32, fs: f32) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut current = String::new();
+        for word in text.split_whitespace() {
+            let candidate = if current.is_empty() { word.to_string() } else { format!("{} {}", current, word) };
+            let w = self.text_w(&candidate, fs, false, false, false);
+            if w > max_width && !current.is_empty() { lines.push(std::mem::take(&mut current)); current = word.to_string(); }
+            else { current = candidate; }
+        }
+        if !current.is_empty() { lines.push(current); }
+        if lines.is_empty() { lines.push(text.to_string()); }
+        lines
+    }
+
+    fn text_wh_wrap(&mut self, text: &str, fs: f32) -> (f32, usize, String) {
+        let mw = self.max_node_width;
+        let mut all_lines: Vec<String> = Vec::new();
+        let mut max_w: f32 = 0.0;
+        for line in text.lines() {
+            let w = self.text_w(line, fs, false, false, false);
+            if w > mw && mw > 0.0 {
+                let wrapped = self.wrap_text(line, mw, fs);
+                for wl in &wrapped { max_w = max_w.max(self.text_w(wl, fs, false, false, false)); }
+                all_lines.extend(wrapped);
+            } else { max_w = max_w.max(w); all_lines.push(line.to_string()); }
+        }
+        if all_lines.is_empty() { all_lines.push(text.to_string()); max_w = self.text_w(text, fs, false, false, false); }
+        (max_w, all_lines.len() as usize, all_lines.join("
+"))
+    }
+
     fn node_size(&mut self, label: &str, shape: &NodeShape) -> (f64, f64) {
         let lh = self.font_size as f64 * 1.2;
         let (tw, lc) = self.text_wh(label, self.font_size, false, false, false);
         let pad_w = self.node_padding_h as f64 * 2.0;
         let pad_h = self.node_padding_v as f64 * 2.0;
+        let mw = self.max_node_width as f64;
+        // Auto-wrap if unwrapped width exceeds max
+        let (lc, tw) = if (tw as f64 + pad_w) > mw { let (w2, l2, _) = self.text_wh_wrap(label, self.font_size); (l2, w2 as f64) } else { (lc, tw as f64) };
         let th = lh * lc as f64;
-        let mut w = (tw as f64 + pad_w).max(56.0);
+        let mut w = (tw + pad_w).max(56.0);
         let mut h = (th + pad_h).max(36.0);
         match shape {
             NodeShape::Circle | NodeShape::DoubleCircle => { let s = w.max(h); w = s; h = s; }

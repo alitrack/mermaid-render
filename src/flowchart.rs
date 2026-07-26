@@ -286,8 +286,28 @@ fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramS
     let text_x = pos.x + pos.width / 2.0;
     let text_y = pos.y + pos.height / 2.0;
 
-    // Handle multi-line labels
-    let lines: Vec<&str> = escaped_label.lines().collect();
+    // Handle multi-line labels WITH auto-wrapping
+    let raw_lines: Vec<&str> = escaped_label.lines().collect();
+    let max_w = pos.width - 12.0; // text area inside node padding
+    let mut lines: Vec<String> = Vec::new();
+    for line in &raw_lines {
+        let estimated_w = line.len() as f32 * style.font_size * 0.55;
+        if estimated_w > max_w && max_w > 0.0 {
+            // Wrap at word boundaries
+            let mut cur = String::new();
+            for word in line.split_whitespace() {
+                let cand = if cur.is_empty() { word.to_string() } else { format!("{} {}", cur, word) };
+                let cw = cand.len() as f32 * style.font_size * 0.55;
+                if cw > max_w && !cur.is_empty() { lines.push(std::mem::take(&mut cur)); cur = word.to_string(); }
+                else { cur = cand; }
+            }
+            if !cur.is_empty() { lines.push(cur); }
+            if lines.is_empty() { lines.push(line.to_string()); }
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    if lines.is_empty() { lines.push(escaped_label); }
     let line_height = style.font_size * 1.2;
     let total_height = line_height * lines.len() as f32;
     let start_y = text_y - (total_height / 2.0) + line_height / 2.0;
@@ -839,11 +859,13 @@ mod tests {
             id: "A".to_string(),
             label: "A".to_string(),
             shape: NodeShape::Rect,
+            class_names: vec![],
         };
         let to_node = super::super::types::FlowchartNode {
             id: "B".to_string(),
             label: "B".to_string(),
             shape: NodeShape::Rect,
+            class_names: vec![],
         };
         let from = LayoutPos::new(0.0, 0.0, 100.0, 40.0);
         let to = LayoutPos::new(200.0, 100.0, 100.0, 40.0);
@@ -857,6 +879,8 @@ mod tests {
             style: &style,
             direction: &FlowDirection::LeftRight,
             waypoints: &[],
+            link_stroke: None,
+            link_stroke_width: None,
             measure: &mut measure,
         });
 

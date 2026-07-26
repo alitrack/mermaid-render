@@ -1,6 +1,6 @@
 [package]
 name = "mermaid-render"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "Pure Rust Mermaid diagram parser and SVG renderer — zero JS, zero Node, minimal deps"
 license = "MIT"
@@ -14,3 +14,6 @@ ab_glyph = { version = "0.2", optional = true }
 [features]
 default = []
 font-measure = ["dep:ab_glyph"]
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }

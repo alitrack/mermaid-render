@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: "render(\"sequenceDiagram\\n  Alice->>Bob: Hello\\n  Bob->>Alice: Hi!\\n\")"
+---
+"<g></g>"

@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: "render(\"gantt\\n  title Project\\n  dateFormat YYYY-MM-DD\\n  section Phase 1\\n  Task A : a1, 2024-01-01, 7d\\n\")"
+---
+"<g></g>"

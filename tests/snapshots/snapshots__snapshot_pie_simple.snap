@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: "render(\"pie\\n  title Usage\\n  \\\"Chrome\\\" : 60\\n  \\\"Firefox\\\" : 20\\n\")"
+---
+"<g></g>"

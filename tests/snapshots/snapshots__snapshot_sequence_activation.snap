@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: "render(\"sequenceDiagram\\n  A->>+B: Request\\n  B->>-A: Response\\n\")"
+---
+"<g></g>"

@@ -1,0 +1,5 @@
+---
+source: tests/snapshots.rs
+expression: "render(\"classDiagram\\n  Animal <|-- Dog\\n  Animal : +name\\n  Dog : +bark()\\n\")"
+---
+"<g></g>"
