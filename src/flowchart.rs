@@ -110,8 +110,29 @@ pub fn render_flowchart(
         ));
     }
 
-    let total_width = bbox.right() + padding;
-    let total_height = bbox.bottom() + padding;
+    let total_width = if flowchart.subgraphs.is_empty() {
+        bbox.right() + padding
+    } else {
+        // Include subgraph box extents in total width
+        let mut max = bbox.right();
+        for sg in &flowchart.subgraphs {
+            if let Some((x, _, w, _)) = subgraph_bbox(sg, &positions) {
+                max = max.max(x + w);
+            }
+        }
+        max + padding
+    };
+    let total_height = if flowchart.subgraphs.is_empty() {
+        bbox.bottom() + padding
+    } else {
+        let mut max = bbox.bottom();
+        for sg in &flowchart.subgraphs {
+            if let Some((_, y, _, h)) = subgraph_bbox(sg, &positions) {
+                max = max.max(y + h);
+            }
+        }
+        max + padding
+    };
 
     Ok((svg, total_width, total_height))
 }
@@ -723,31 +744,27 @@ fn subgraph_bbox(
         return None;
     }
 
-    let content_bbox = BBox::new(min_x, min_y, max_right - min_x, max_bottom - min_y);
-    let padded_bbox = content_bbox.with_padding(20.0);
-    let raw_y = padded_bbox.y - 20.0;
-    let clamped_y = raw_y.max(0.0);
+    let pad = 28.0;
+    let title_h = if subgraph.title.is_empty() { 0.0 } else { 22.0 };
     Some((
-        padded_bbox.x,
-        clamped_y,
-        padded_bbox.width,
-        padded_bbox.height + 20.0 + (raw_y - clamped_y).abs(),
+        min_x - pad,
+        (min_y - pad - title_h).max(0.0),
+        max_right - min_x + pad * 2.0,
+        max_bottom - min_y + pad * 2.0 + title_h,
     ))
 }
 
 fn render_subgraph_box(
     subgraph: &super::types::Subgraph,
     positions: &HashMap<String, LayoutPos>,
-    style: &DiagramStyle,
+    _style: &DiagramStyle,
 ) -> String {
     let Some((min_x, min_y, width, height)) = subgraph_bbox(subgraph, positions) else {
         return String::new();
     };
 
     format!(
-        r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="8" fill="{}" fill-opacity="0.3" stroke="{}" stroke-width="1" stroke-dasharray="4,2" />"#,
-        min_x, min_y, width, height,
-        style.node_fill, style.node_stroke
+        "<rect x=\"{min_x:.2}\" y=\"{min_y:.2}\" width=\"{width:.2}\" height=\"{height:.2}\" rx=\"10\" fill=\"#f0f4ff\" fill-opacity=\"0.25\" stroke=\"#93c5fd\" stroke-width=\"1.2\" stroke-dasharray=\"6,3\" />"
     )
 }
 
