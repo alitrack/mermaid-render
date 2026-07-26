@@ -117,3 +117,15 @@ fn snapshot_gitgraph_simple() {
     insta::assert_yaml_snapshot!(render("gitGraph\n  commit\n  branch develop\n  checkout develop\n  commit\n  checkout main\n  merge develop\n"));
 }
 
+
+#[test]
+fn snapshot_flowchart_nested_subgraph() {
+    insta::assert_yaml_snapshot!(render("graph TD
+  subgraph Outer
+  A-->B
+  subgraph Inner
+  C-->D
+  end
+  end
+"));
+}

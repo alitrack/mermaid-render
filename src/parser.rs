@@ -80,7 +80,7 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
     let mut class_defs: Vec<ClassDef> = Vec::new();
     let mut node_styles: Vec<(String, NodeStyle)> = Vec::new();
     let mut link_styles: Vec<LinkStyleDef> = Vec::new();
-    let mut current_subgraph: Option<Subgraph> = None;
+        let mut subgraph_stack: Vec<Subgraph> = Vec::new();
     let mut node_labels: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
 
@@ -95,7 +95,7 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
             continue;
         }
 
-        // Subgraph start
+        // Subgraph start — push to stack for nesting support
         if line.starts_with("subgraph ") {
             let raw_title = line.strip_prefix("subgraph ").unwrap_or("").trim();
             let title = if let Some(bracket_pos) = raw_title.find("[\"") {
@@ -108,18 +108,22 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
             } else {
                 raw_title.to_string()
             };
-            let id = format!("subgraph_{}", subgraphs.len());
-            current_subgraph = Some(Subgraph {
-                id: id.clone(),
+            let id = format!("subgraph_{}", subgraphs.len() + subgraph_stack.len());
+            subgraph_stack.push(Subgraph {
+                id,
                 title,
                 nodes: Vec::new(),
             });
             continue;
         }
 
-        // Subgraph end
+        // Subgraph end — pop innermost subgraph
         if line == "end" {
-            if let Some(sg) = current_subgraph.take() {
+            if let Some(sg) = subgraph_stack.pop() {
+                // If there's a parent subgraph, add to its nodes too
+                if let Some(parent) = subgraph_stack.last_mut() {
+                    parent.nodes.extend(sg.nodes.iter().cloned());
+                }
                 subgraphs.push(sg);
             }
             continue;
@@ -207,7 +211,7 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
             }
 
             // Add edge endpoint nodes to current subgraph if inside one
-            if let Some(ref mut sg) = current_subgraph {
+            if let Some(sg) = subgraph_stack.last_mut() {
                 if !sg.nodes.contains(&parsed.from.id) {
                     sg.nodes.push(parsed.from.id.clone());
                 }
@@ -230,7 +234,7 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
             node_labels.insert(id.clone(), label);
 
             // Add to current subgraph if in one
-            if let Some(ref mut sg) = current_subgraph {
+            if let Some(sg) = subgraph_stack.last_mut() {
                 sg.nodes.push(id);
             }
         }
