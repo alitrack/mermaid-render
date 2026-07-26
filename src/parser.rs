@@ -9,6 +9,9 @@ pub enum MermaidDiagram {
     ClassDiagram(ClassDiagram),
     StateDiagram(StateDiagram),
     ErDiagram(ErDiagram),
+    Timeline(crate::timeline::Timeline),
+    Mindmap(crate::mindmap::MindmapNode),
+    GitGraph(crate::gitgraph::GitGraph),
 }
 
 /// Parse a mermaid diagram from source text
@@ -39,6 +42,15 @@ pub fn parse_mermaid(input: &str) -> Result<MermaidDiagram, String> {
     } else if first_line.starts_with("erDiagram") || first_line.starts_with("er") {
         let diagram = parse_er(input).map_err(|e| format!("ER parse error: {}", e))?;
         Ok(MermaidDiagram::ErDiagram(diagram))
+    } else if first_line.starts_with("timeline") {
+        let diagram = crate::timeline::parse_timeline(input)?;
+        Ok(MermaidDiagram::Timeline(diagram))
+    } else if first_line.starts_with("mindmap") {
+        let diagram = crate::mindmap::parse_mindmap(input)?;
+        Ok(MermaidDiagram::Mindmap(diagram))
+    } else if first_line.starts_with("gitGraph") {
+        let diagram = crate::gitgraph::parse_gitgraph(input)?;
+        Ok(MermaidDiagram::GitGraph(diagram))
     } else {
         let diagram_type = first_line.split_whitespace().next().unwrap_or(first_line);
         eprintln!(

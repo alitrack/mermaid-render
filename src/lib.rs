@@ -7,11 +7,14 @@
 
 mod error_svg;
 mod flowchart;
+mod gitgraph;
 #[cfg(feature = "font-measure")]
 mod font_measure;
 mod layout;
+mod mindmap;
 mod parser;
 mod render;
+mod timeline;
 mod types;
 mod xml;
 

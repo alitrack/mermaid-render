@@ -130,6 +130,9 @@ pub fn render_diagram<T: TextMeasure>(
         MermaidDiagram::ClassDiagram(cls) => render_class(&cls, style, measure)?,
         MermaidDiagram::StateDiagram(st) => render_state(&st, style, measure)?,
         MermaidDiagram::ErDiagram(er) => render_er(&er, style, measure)?,
+        MermaidDiagram::Timeline(tl) => crate::timeline::render_timeline(&tl, style, measure)?,
+        MermaidDiagram::Mindmap(mm) => crate::mindmap::render_mindmap(&mm, style, measure)?,
+        MermaidDiagram::GitGraph(gg) => crate::gitgraph::render_gitgraph(&gg, style, style.font_size)?,
     };
 
     let source_lines = source.lines().filter(|l| !l.trim().is_empty()).count();
