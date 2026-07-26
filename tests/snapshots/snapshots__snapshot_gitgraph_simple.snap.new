@@ -1,0 +1,6 @@
+---
+source: tests/snapshots.rs
+assertion_line: 124
+expression: "render(\"gitGraph\\n  commit\\n  branch develop\\n  checkout develop\\n  commit\\n  checkout main\\n  merge develop\\n\")"
+---
+"<line x1=\"47.00\" y1=\"47.00\" x2=\"47.00\" y2=\"77.00\" stroke=\"#3b82f6\" stroke-width=\"2\" /><circle cx=\"47.00\" cy=\"47.00\" r=\"7.00\" fill=\"#eff6ff\" stroke=\"#3b82f6\" stroke-width=\"1.5\" /><circle cx=\"127.00\" cy=\"47.00\" r=\"7.00\" fill=\"#eff6ff\" stroke=\"#3b82f6\" stroke-width=\"1.5\" /><circle cx=\"47.00\" cy=\"77.00\" r=\"7.00\" fill=\"#eff6ff\" stroke=\"#3b82f6\" stroke-width=\"1.5\" />"

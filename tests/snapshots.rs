@@ -110,6 +110,13 @@ fn snapshot_mindmap_simple() {
     insta::assert_yaml_snapshot!(render("mindmap\n  root((Central))\n    Topic A\n      Detail A1\n    Topic B\n"));
 }
 
+#[test]
+fn snapshot_mindmap_long_labels() {
+    insta::assert_yaml_snapshot!(render(
+        "mindmap\n  root((Project Plan))\n    Research and Analysis Phase\n      Market survey and competitor benchmarking\n      Technical feasibility assessment\n    Implementation and Development\n      Core module architecture design\n      Testing and quality assurance\n      Documentation and user guides\n    Deployment and Operations\n      Production infrastructure setup\n      Monitoring and alerting configuration\n"
+    ));
+}
+
 // ── GitGraph ──
 
 #[test]
@@ -127,5 +134,17 @@ fn snapshot_flowchart_nested_subgraph() {
   C-->D
   end
   end
+"));
+}
+
+#[test]
+fn snapshot_gitgraph_merge() {
+    insta::assert_yaml_snapshot!(render("gitGraph
+  commit
+  branch dev
+  checkout dev
+  commit
+  checkout main
+  merge dev
 "));
 }

@@ -1,10 +1,18 @@
-# mermaid-rs
+# mermaid-render
 
-**Pure Rust Mermaid diagram parser and SVG renderer.**
+**Pure Rust Mermaid diagram parser and SVG renderer — zero JavaScript, zero Node.js, one dependency.**
 
-Zero JavaScript. Zero Node.js. Minimal dependencies. Parses Mermaid diagram syntax and renders to SVG entirely in Rust — now powered by **dagre-rs** for production-quality hierarchical graph layout.
+[![Crates.io](https://img.shields.io/crates/v/mermaid-render)](https://crates.io/crates/mermaid-render)
+![License](https://img.shields.io/crates/l/mermaid-render)
 
-Extracted from [MarkieCli](https://github.com/lsj5031/MarkieCli) (MIT licensed).
+Parses Mermaid diagram syntax and renders to SVG entirely in Rust, powered by **dagre-rs** for production-quality hierarchical graph layout (the same Sugiyama algorithm mermaid.js uses).
+
+```rust
+use mermaid_render::{render_diagram, EstimatedMeasure};
+
+let src = "graph TD\n  A-->|label|B\n  B-->C";
+let (svg, w, h) = render_diagram(src, &Default::default(), &mut EstimatedMeasure).unwrap();
+```
 
 ## Architecture
 
@@ -12,22 +20,31 @@ Extracted from [MarkieCli](https://github.com/lsj5031/MarkieCli) (MIT licensed).
 .mmd → parser.rs → types.rs → layout.rs (dagre-rs) → render.rs → SVG
 ```
 
-- **Parser**: Hand-written, zero-dependency Mermaid syntax parser (7 diagram types)
-- **Layout**: [dagre-rs](https://github.com/kookyleo/dagre-rs) — same Sugiyama layout engine mermaid.js uses (network simplex + barycenter + Brandes-Koepf)
-- **Renderer**: Direct SVG generation with all 13 node shapes, edge styles, and arrow types
-- **Text measurement**: `TextMeasure` trait with `EstimatedMeasure` default; pluggable font-based backend
+| Layer | Description |
+|-------|-------------|
+| **Parser** | Hand-written Mermaid syntax parser for 10 diagram types |
+| **Layout** | [dagre-rs](https://github.com/kookyleo/dagre-rs) v0.1.1 — network simplex + barycenter + Brandes-Koepf |
+| **Renderer** | Direct SVG generation with all 13 node shapes, edge styles, arrow types |
+| **Text** | `TextMeasure` trait with `EstimatedMeasure` default; optional `FontMeasure` (ab_glyph) |
 
-## Supported Diagram Types
+## Supported Diagram Types (10)
 
-- **Flowchart** — `graph TD/LR/RL/BT`, 13 node shapes, subgraphs, self-loops
-- **Sequence** — participants, messages, notes, activations, loops, alt/else
-- **Class** — classes, attributes, methods, inheritance, composition, annotations
-- **ER (Entity Relationship)** — entities, attributes, relationships, cardinality
-- **State** — states, transitions, composite states, choice nodes, fork/join
-- **Gantt** — sections, tasks, dependencies, milestones
-- **Pie** — title, slices with labels and values
+| Type | Features |
+|------|----------|
+| **Flowchart** | `graph TD/LR/RL/BT`, 13 node shapes, subgraphs (nested), self-loops, CSS classes, node styles |
+| **Sequence** | participants, messages, notes, activations, loops, alt/else, autonumber |
+| **Class** | classes, attributes, methods, inheritance, composition, annotations, generics (`Foo~T~`) |
+| **ER** | entities, attributes (key/composite), relationships, cardinality |
+| **State** | states, transitions, composite states, choice nodes, fork/join |
+| **Gantt** | sections, tasks, dependencies, milestones |
+| **Pie** | title, slices with labels and values |
+| **Timeline** | periods, events |
+| **Mindmap** | tree structure with colored nodes |
+| **GitGraph** | branches, commits, merges, tags |
 
-## Styling
+## Styling (v0.7+)
+
+Full `classDef`, `style`, and `linkStyle` support — parsed and rendered:
 
 ```
 classDef highlight fill:#f9f,stroke:#333,stroke-width:2px
@@ -37,30 +54,27 @@ linkStyle 0 stroke:red,stroke-width:3px
 A:::highlight --> B:::highlight
 ```
 
-Style definitions (`NodeStyle`, `ClassDef`, `LinkStyleDef`) are parsed and stored in the `Flowchart` struct. Renderer integration is in progress.
+## Quality
 
-## Usage
-
-```rust
-use mermaid_rs::{parse_mermaid, render_diagram, DiagramStyle, EstimatedMeasure, Rect};
-
-let input = "graph TD\n  A[Start] --> B[End]";
-let diagram = parse_mermaid(input)?;
-let style = DiagramStyle::default();
-let mut measure = EstimatedMeasure { svg_size: Rect::new(0.0, 0.0, 800.0, 600.0) };
-let svg = render_diagram(&diagram, &style, &mut measure)?;
-std::fs::write("diagram.svg", svg)?;
-```
+- **58 tests** — 33 unit + 19 insta visual snapshots covering all 10 types
+- Auto text wrapping for long labels
+- Graceful error SVG fallback (never panics)
 
 ## Dependencies
 
-| Crate | Purpose | Runtime deps |
-|-------|---------|:---:|
-| [dagre](https://crates.io/crates/dagre) | Hierarchical graph layout (Sugiyama) | 0 |
-| `log` | Internal logging (dagre dep) | 1 |
+| Crate | Purpose |
+|-------|---------|
+| `dagre` ^0.1 | Graph layout (Sugiyama) |
+| `ab_glyph` (optional) | Accurate font measurement |
 
-**Total runtime dependencies: 1** (dagre itself has zero runtime deps beyond `log`).
+## TypePress Integration
+
+mermaid-render is the default diagram engine for [TypePress](https://github.com/alitrack/typepress) (Markdown → PDF). Enable via:
+
+```toml
+mermaid-render = { version = "0.9", optional = true }
+```
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — extracted from [MarkieCli](https://github.com/lsj5031/MarkieCli)
