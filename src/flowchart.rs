@@ -5,7 +5,34 @@ use crate::TextMeasure;
 use crate::Rect;
 use super::layout::{BBox, LayoutEngine, LayoutPos};
 use super::render::{DiagramStyle, escape_xml};
-use super::types::{ArrowType, EdgeStyle, FlowDirection, Flowchart, NodeShape};
+use super::types::{ArrowType, EdgeStyle, FlowDirection, Flowchart, NodeShape, NodeStyle};
+
+/// Build a map from node_id → effective NodeStyle (classDef + inline styles merged).
+fn build_node_style_map(flowchart: &Flowchart) -> std::collections::HashMap<String, NodeStyle> {
+    use std::collections::HashMap;
+    let mut map: HashMap<String, NodeStyle> = HashMap::new();
+    for (node_id, style) in &flowchart.node_styles {
+        map.insert(node_id.clone(), style.clone());
+    }
+    for class_def in &flowchart.class_defs {
+        for node in &flowchart.nodes {
+            if node.class_names.contains(&class_def.name) {
+                let entry = map.entry(node.id.clone()).or_default();
+                if class_def.style.fill.is_some() { entry.fill = class_def.style.fill.clone(); }
+                if class_def.style.stroke.is_some() { entry.stroke = class_def.style.stroke.clone(); }
+                if class_def.style.stroke_width.is_some() { entry.stroke_width = class_def.style.stroke_width.clone(); }
+                if class_def.style.color.is_some() { entry.color = class_def.style.color.clone(); }
+            }
+        }
+    }
+    map
+}
+
+fn build_link_style_map(flowchart: &Flowchart) -> std::collections::HashMap<usize, (Option<String>, Option<String>)> {
+    flowchart.link_styles.iter()
+        .map(|ls| (ls.index, (ls.stroke.clone(), ls.stroke_width.clone())))
+        .collect()
+}
 
 /// Render a flowchart to SVG
 pub fn render_flowchart(
@@ -31,8 +58,11 @@ pub fn render_flowchart(
         svg.push_str(&render_subgraph_box(subgraph, &positions, style));
     }
 
+    let node_style_map = build_node_style_map(flowchart);
+    let link_style_map = build_link_style_map(flowchart);
+
     // Draw edges (behind nodes but on top of subgraph boxes)
-    for edge in &flowchart.edges {
+    for (edge_idx, edge) in flowchart.edges.iter().enumerate() {
         let from_pos = positions.get(&edge.from);
         let to_pos = positions.get(&edge.to);
         let from_node = node_map.get(edge.from.as_str());
@@ -55,6 +85,8 @@ pub fn render_flowchart(
                 direction: &flowchart.direction,
                 waypoints,
                 measure,
+                link_stroke: link_style_map.get(&edge_idx).and_then(|s| s.0.as_deref()),
+                link_stroke_width: link_style_map.get(&edge_idx).and_then(|s| s.1.as_deref()),
             }));
         }
     }
@@ -62,7 +94,8 @@ pub fn render_flowchart(
     // Draw nodes on top
     for node in &flowchart.nodes {
         if let Some(pos) = positions.get(&node.id) {
-            svg.push_str(&render_node(&node.label, &node.shape, pos, style));
+            let ns = node_style_map.get(&node.id);
+            svg.push_str(&render_node(&node.label, &node.shape, pos, style, ns));
         }
     }
 
@@ -83,50 +116,55 @@ pub fn render_flowchart(
     Ok((svg, total_width, total_height))
 }
 
-fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramStyle) -> String {
+fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramStyle, node_style: Option<&NodeStyle>) -> String {
     let mut svg = String::new();
     let label = label.replace("<br/>", "\n").replace("<br>", "\n").replace("<br />", "\n");
     let escaped_label = escape_xml(&label);
 
+    let fill = node_style.and_then(|ns| ns.fill.as_deref()).unwrap_or(&style.node_fill);
+    let stroke = node_style.and_then(|ns| ns.stroke.as_deref()).unwrap_or(&style.node_stroke);
+    let stroke_w = node_style.and_then(|ns| ns.stroke_width.as_deref()).unwrap_or("1");
+    let text_color = node_style.and_then(|ns| ns.color.as_deref()).unwrap_or(&style.node_text);
+
     match shape {
         NodeShape::Rect => {
             svg.push_str(&format!(
-                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y, pos.width, pos.height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::RoundedRect => {
             let rx = 6.0_f32.min(pos.height / 4.0);
             svg.push_str(&format!(
-                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y, pos.width, pos.height, rx,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::Stadium => {
             let rx = pos.height / 2.0;
             svg.push_str(&format!(
-                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y, pos.width, pos.height, rx,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::Subroutine => {
             // Rect with vertical lines at ends
             svg.push_str(&format!(
-                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y, pos.width, pos.height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
             let line_offset = 6.0;
             svg.push_str(&format!(
-                r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke="{}" stroke-width="1" />"#,
-                pos.x + line_offset, pos.y, pos.x + line_offset, pos.y + pos.height, style.node_stroke
+                r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke="{}" stroke-width="{stroke_w}" />"#,
+                pos.x + line_offset, pos.y, pos.x + line_offset, pos.y + pos.height, stroke
             ));
             svg.push_str(&format!(
-                r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke="{}" stroke-width="1" />"#,
-                pos.x + pos.width - line_offset, pos.y, pos.x + pos.width - line_offset, pos.y + pos.height, style.node_stroke
+                r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke="{}" stroke-width="{stroke_w}" />"#,
+                pos.x + pos.width - line_offset, pos.y, pos.x + pos.width - line_offset, pos.y + pos.height, stroke
             ));
         }
         NodeShape::Cylinder => {
@@ -135,20 +173,20 @@ fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramS
             let bottom_y = pos.y + pos.height - cap_height;
             // Body: left side, bottom arc, right side (filled, no top/bottom strokes)
             svg.push_str(&format!(
-                r#"<path d="M {:.2} {:.2} L {:.2} {:.2} A {:.2} {:.2} 0 0 0 {:.2} {:.2} L {:.2} {:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<path d="M {:.2} {:.2} L {:.2} {:.2} A {:.2} {:.2} 0 0 0 {:.2} {:.2} L {:.2} {:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y + cap_height,
                 pos.x, bottom_y,
                 rx, cap_height,
                 pos.x + pos.width, bottom_y,
                 pos.x + pos.width, pos.y + cap_height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
             // Top ellipse (full, drawn on top of body)
             svg.push_str(&format!(
-                r#"<ellipse cx="{:.2}" cy="{:.2}" rx="{:.2}" ry="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<ellipse cx="{:.2}" cy="{:.2}" rx="{:.2}" ry="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x + pos.width / 2.0, pos.y + cap_height,
                 rx, cap_height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::Circle => {
@@ -156,8 +194,8 @@ fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramS
             let cx = pos.x + pos.width / 2.0;
             let cy = pos.y + pos.height / 2.0;
             svg.push_str(&format!(
-                r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
-                cx, cy, radius, style.node_fill, style.node_stroke
+                r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
+                cx, cy, radius, fill, stroke
             ));
         }
         NodeShape::DoubleCircle => {
@@ -165,81 +203,81 @@ fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramS
             let cx = pos.x + pos.width / 2.0;
             let cy = pos.y + pos.height / 2.0;
             svg.push_str(&format!(
-                r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
-                cx, cy, radius + 4.0, style.node_fill, style.node_stroke
+                r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
+                cx, cy, radius + 4.0, fill, stroke
             ));
             svg.push_str(&format!(
-                r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
-                cx, cy, radius, style.node_fill, style.node_stroke
+                r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
+                cx, cy, radius, fill, stroke
             ));
         }
         NodeShape::Rhombus => {
             let cx = pos.x + pos.width / 2.0;
             let cy = pos.y + pos.height / 2.0;
             svg.push_str(&format!(
-                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 cx, pos.y,
                 pos.x + pos.width, cy,
                 cx, pos.y + pos.height,
                 pos.x, cy,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::Hexagon => {
             let offset = 15.0_f32.min(pos.width / 4.0);
             svg.push_str(&format!(
-                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x + offset, pos.y,
                 pos.x + pos.width - offset, pos.y,
                 pos.x + pos.width, pos.y + pos.height / 2.0,
                 pos.x + pos.width - offset, pos.y + pos.height,
                 pos.x + offset, pos.y + pos.height,
                 pos.x, pos.y + pos.height / 2.0,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::Parallelogram => {
             let offset = 20.0_f32.min(pos.width / 3.0);
             svg.push_str(&format!(
-                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x + offset, pos.y,
                 pos.x + pos.width, pos.y,
                 pos.x + pos.width - offset, pos.y + pos.height,
                 pos.x, pos.y + pos.height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::ParallelogramAlt => {
             let offset = 20.0_f32.min(pos.width / 3.0);
             svg.push_str(&format!(
-                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y,
                 pos.x + pos.width - offset, pos.y,
                 pos.x + pos.width, pos.y + pos.height,
                 pos.x + offset, pos.y + pos.height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::Trapezoid => {
             let offset = 15.0_f32.min(pos.width / 4.0);
             svg.push_str(&format!(
-                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x + offset, pos.y,
                 pos.x + pos.width - offset, pos.y,
                 pos.x + pos.width, pos.y + pos.height,
                 pos.x, pos.y + pos.height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
         NodeShape::TrapezoidAlt => {
             let offset = 15.0_f32.min(pos.width / 4.0);
             svg.push_str(&format!(
-                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="1" />"#,
+                r#"<polygon points="{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}" fill="{}" stroke="{}" stroke-width="{stroke_w}" />"#,
                 pos.x, pos.y,
                 pos.x + pos.width, pos.y,
                 pos.x + pos.width - offset, pos.y + pos.height,
                 pos.x + offset, pos.y + pos.height,
-                style.node_fill, style.node_stroke
+                fill, stroke
             ));
         }
     }
@@ -258,7 +296,7 @@ fn render_node(label: &str, shape: &NodeShape, pos: &LayoutPos, style: &DiagramS
         let y = start_y + i as f32 * line_height;
         svg.push_str(&format!(
             r#"<text x="{:.2}" y="{:.2}" dy="0.35em" font-family="{}" font-size="{:.1}" font-weight="500" fill="{}" text-anchor="middle">{}</text>"#,
-            text_x, y, style.font_family, style.font_size, style.node_text, line
+            text_x, y, style.font_family, style.font_size, text_color, line
         ));
     }
 
@@ -313,6 +351,8 @@ struct RenderEdgeContext<'a, T: TextMeasure> {
     direction: &'a FlowDirection,
     waypoints: &'a [(f32, f32)],
     measure: &'a mut T,
+    link_stroke: Option<&'a str>,
+    link_stroke_width: Option<&'a str>,
 }
 
 fn render_edge<T: TextMeasure>(
@@ -327,6 +367,11 @@ fn render_edge<T: TextMeasure>(
     let direction = ctx.direction;
     let waypoints = ctx.waypoints;
     let measure = &mut *ctx.measure;
+    let link_stroke = ctx.link_stroke;
+    let link_stroke_width = ctx.link_stroke_width;
+
+    let edge_stroke_override = link_stroke.unwrap_or(&style.edge_stroke);
+    let _edge_width_override = link_stroke_width.unwrap_or("0.75");
 
     let mut svg = String::new();
     let vertical = matches!(direction, FlowDirection::TopDown | FlowDirection::BottomUp);
@@ -381,7 +426,7 @@ fn render_edge<T: TextMeasure>(
             cp1_x, cp1_y,
             cp2_x, cp2_y,
             enter_x, enter_y,
-            style.edge_stroke, stroke_width, dash_attr
+            edge_stroke_override, stroke_width, dash_attr
         ));
 
         // Arrowhead pointing down into the top of the node
@@ -504,7 +549,7 @@ fn render_edge<T: TextMeasure>(
         .join(" ");
     svg.push_str(&format!(
         r#"<polyline points="{}" fill="none" stroke="{}" stroke-width="{:.2}" stroke-linecap="round" stroke-linejoin="round"{} />"#,
-        points_str, style.edge_stroke, stroke_width, dash_attr
+        points_str, edge_stroke_override, stroke_width, dash_attr
     ));
 
     // Arrow head aligned to final segment
