@@ -49,7 +49,6 @@ pub fn parse_gitgraph(input: &str) -> Result<GitGraph, String> {
     let mut actions = Vec::new();
 
     for line in input.lines().skip(1) {
-        // skip "gitGraph" header
         let line = line.trim();
         if line.is_empty() || line.starts_with("%%") {
             continue;
@@ -80,7 +79,6 @@ fn parse_commit_options(rest: &str) -> (Option<String>, Option<String>, Option<S
     let mut tag = None;
     let mut commit_type = GitCommitType::Normal;
 
-    // Parse id: "123abc"
     let mut pos = 0;
     let chars: Vec<char> = rest.chars().collect();
     while pos < chars.len() && chars[pos].is_whitespace() { pos += 1; }
@@ -91,10 +89,9 @@ fn parse_commit_options(rest: &str) -> (Option<String>, Option<String>, Option<S
             s.push(chars[pos]); pos += 1;
         }
         if !s.is_empty() { id = Some(s); }
-        pos += 1; // skip closing quote
+        pos += 1;
     }
 
-    // Parse tag: tag: "v1.0"
     while pos < chars.len() && chars[pos].is_whitespace() { pos += 1; }
     if pos + 4 < chars.len() && rest[pos..].starts_with("tag:") {
         pos += 4;
@@ -109,7 +106,6 @@ fn parse_commit_options(rest: &str) -> (Option<String>, Option<String>, Option<S
         }
     }
 
-    // Parse type: type: HIGHLIGHT / REVERSE
     while pos < chars.len() && chars[pos].is_whitespace() { pos += 1; }
     if pos + 5 < chars.len() && rest[pos..].to_lowercase().starts_with("type:") {
         let after = rest[pos+5..].trim().to_lowercase();
@@ -125,7 +121,7 @@ fn parse_commit_options(rest: &str) -> (Option<String>, Option<String>, Option<S
 struct BranchState {
     name: String,
     color_idx: usize,
-    commits: Vec<usize>, // indices into commit_list
+    commits: Vec<usize>,
 }
 
 const BRANCH_COLORS: &[&str] = &[
@@ -141,10 +137,11 @@ struct CommitPos {
     commit_type: GitCommitType,
 }
 
-pub fn layout_gitgraph(graph: &GitGraph, _font_size: f32) -> (HashMap<String, LayoutPos>, BBox) {
+pub fn layout_gitgraph(graph: &GitGraph, _font_size: f32) -> (HashMap<String, LayoutPos>, BBox, Vec<(usize, usize, usize)>) {
     let mut positions = HashMap::new();
+    let mut merge_lines: Vec<(usize, usize, usize)> = Vec::new();
     if graph.actions.is_empty() {
-        return (positions, BBox::default());
+        return (positions, BBox::default(), merge_lines);
     }
 
     let mut branches: Vec<BranchState> = vec![BranchState {
@@ -154,7 +151,6 @@ pub fn layout_gitgraph(graph: &GitGraph, _font_size: f32) -> (HashMap<String, La
     }];
     let mut current_branch = 0usize;
     let mut commit_list: Vec<(usize, GitCommitType, Option<String>, Option<String>)> = Vec::new();
-    // (branch_idx, type, id, tag)
 
     let node_w = 14.0;
     let node_h = 14.0;
@@ -182,25 +178,31 @@ pub fn layout_gitgraph(graph: &GitGraph, _font_size: f32) -> (HashMap<String, La
                     current_branch = idx;
                 }
             }
-            GitAction::Merge(_from_name) => {
-                // Add a merge commit on current branch
-                let idx = commit_list.len();
-                branches[current_branch].commits.push(idx);
-                commit_list.push((current_branch, GitCommitType::Normal, None, None));
+            GitAction::Merge(from_name) => {
+                if let Some(source_bi) = branches.iter().position(|b| b.name == *from_name) {
+                    if let Some(&source_ci) = branches[source_bi].commits.last() {
+                        let idx = commit_list.len();
+                        branches[current_branch].commits.push(idx);
+                        commit_list.push((current_branch, GitCommitType::Normal, None, None));
+                        merge_lines.push((idx, source_ci, branches[source_bi].color_idx));
+                    }
+                } else {
+                    let idx = commit_list.len();
+                    branches[current_branch].commits.push(idx);
+                    commit_list.push((current_branch, GitCommitType::Normal, None, None));
+                }
             }
         }
     }
 
     if commit_list.is_empty() {
-        return (positions, BBox::default());
+        return (positions, BBox::default(), merge_lines);
     }
 
-    // Layout: commits stacked vertically per branch, branches side by side
     let n_branches = branches.len();
     let branch_x_start = 40.0;
     let branch_x_gap = 80.0;
 
-    // Assign x per branch
     let branch_x: Vec<f32> = (0..n_branches)
         .map(|i| branch_x_start + i as f32 * branch_x_gap)
         .collect();
@@ -227,7 +229,6 @@ pub fn layout_gitgraph(graph: &GitGraph, _font_size: f32) -> (HashMap<String, La
         );
     }
 
-    // Calculate bbox
     let mut min_x = f32::MAX; let mut min_y = f32::MAX;
     let mut max_x = f32::MIN; let mut max_y = f32::MIN;
     for pos in positions.values() {
@@ -240,7 +241,7 @@ pub fn layout_gitgraph(graph: &GitGraph, _font_size: f32) -> (HashMap<String, La
         max_x - min_x + 120.0,
         max_y - min_y + 40.0,
     );
-    (positions, bbox)
+    (positions, bbox, merge_lines)
 }
 
 // ── Render ──
@@ -252,14 +253,13 @@ pub fn render_gitgraph(
 ) -> Result<(String, f32, f32), String> {
     use crate::render::escape_xml;
 
-    let (positions, bbox) = layout_gitgraph(graph, font_size);
+    let (positions, bbox, merge_lines) = layout_gitgraph(graph, font_size);
     if positions.is_empty() {
         return Ok(("<g></g>".to_string(), 100.0, 50.0));
     }
 
     let mut svg = String::new();
 
-    // Organize commits by branch for line drawing
     let mut branches: Vec<BranchState> = vec![BranchState {
         name: "main".to_string(), color_idx: 0, commits: Vec::new(),
     }];
@@ -286,6 +286,24 @@ pub fn render_gitgraph(
                 branches[current_branch].commits.push(idx);
                 commit_list.push((current_branch, GitCommitType::Normal, None, None));
             }
+        }
+    }
+
+    // Draw merge lines first (behind commits)
+    for &(merge_idx, source_idx, color_idx) in &merge_lines {
+        if let (Some(merge_pos), Some(source_pos)) = (
+            positions.get(&format!("gc-{merge_idx}")),
+            positions.get(&format!("gc-{source_idx}")),
+        ) {
+            let color = BRANCH_COLORS[color_idx];
+            let mx = merge_pos.x + merge_pos.width / 2.0;
+            let my = merge_pos.y + merge_pos.height / 2.0;
+            let sx = source_pos.x + source_pos.width / 2.0;
+            let sy = source_pos.y + source_pos.height / 2.0;
+            let mid_x = (mx + sx) / 2.0;
+            svg.push_str(&format!(
+                r#"<path d="M{mx:.2},{my:.2} C{mid_x:.2},{my:.2} {mid_x:.2},{sy:.2} {sx:.2},{sy:.2}" fill="none" stroke="{color}" stroke-width="2" stroke-dasharray="4,3" />"#
+            ));
         }
     }
 
@@ -322,7 +340,6 @@ pub fn render_gitgraph(
                 cx, cy, r
             ));
 
-            // Tag label
             if let Some(t) = tag {
                 svg.push_str(&format!(
                     r#"<text x="{:.2}" y="{:.2}" dy="-0.5em" font-family="{}" font-size="9" fill="{}" text-anchor="middle">{}</text>"#,
