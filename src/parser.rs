@@ -77,6 +77,9 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
     let mut nodes: Vec<FlowchartNode> = Vec::new();
     let mut edges: Vec<FlowchartEdge> = Vec::new();
     let mut subgraphs: Vec<Subgraph> = Vec::new();
+    let mut class_defs: Vec<ClassDef> = Vec::new();
+    let mut node_styles: Vec<(String, NodeStyle)> = Vec::new();
+    let mut link_styles: Vec<LinkStyleDef> = Vec::new();
     let mut current_subgraph: Option<Subgraph> = None;
     let mut node_labels: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
@@ -119,6 +122,67 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
             if let Some(sg) = current_subgraph.take() {
                 subgraphs.push(sg);
             }
+            continue;
+        }
+
+        // classDef className fill:#f9f,stroke:#333
+        if line.starts_with("classDef ") {
+            if let Some(cd) = parse_classdef_line(&line[9..]) {
+                class_defs.push(cd);
+            }
+            continue;
+        }
+
+        // class nodeId1,nodeId2 className
+        if line.starts_with("class ") {
+            let rest = line[6..].trim();
+            if let Some(comma) = rest.find(',') {
+                // Format: class node1,node2 className
+                let last_space = rest.rfind(' ').unwrap_or(rest.len());
+                let node_list = &rest[..last_space].trim();
+                let class_name = rest[last_space..].trim();
+                for node_id in node_list.split(',').map(|s| s.trim()) {
+                    if let Some(node) = nodes.iter_mut().find(|n| n.id == node_id) {
+                        if !node.class_names.contains(&class_name.to_string()) {
+                            node.class_names.push(class_name.to_string());
+                        }
+                    }
+                }
+            } else {
+                // Format: class className style... (inline)
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let class_name = parts[0];
+                    let style = parse_style_props(&rest[class_name.len()..]);
+                    node_styles.push((class_name.to_string(), style));
+                }
+            }
+            continue;
+        }
+
+        // style nodeId fill:#f00,stroke:#0f0
+        if line.starts_with("style ") {
+            let rest = line[6..].trim();
+            if let Some(first_space) = rest.find(' ') {
+                let node_id = rest[..first_space].trim();
+                let style = parse_style_props(&rest[first_space..]);
+                node_styles.push((node_id.to_string(), style));
+            }
+            continue;
+        }
+
+        // linkStyle 0 stroke:#ff0
+        if line.starts_with("linkStyle ") {
+            let rest = line[10..].trim();
+            let idx_end = rest.find(' ').unwrap_or(rest.len());
+            let idx_str = &rest[..idx_end];
+            let idx: usize = idx_str.parse().unwrap_or(0);
+            let style = parse_style_props(&rest[idx_end..]);
+            link_styles.push(LinkStyleDef {
+                index: idx,
+                stroke: style.stroke,
+                stroke_width: style.stroke_width,
+            });
             continue;
         }
 
@@ -177,10 +241,41 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
         nodes,
         edges,
         subgraphs,
-        class_defs: Vec::new(),
-        node_styles: Vec::new(),
-        link_styles: Vec::new(),
+        class_defs,
+        node_styles,
+        link_styles,
     })
+}
+
+/// Parse `classDef className fill:#f9f,stroke:#333`
+fn parse_classdef_line(rest: &str) -> Option<ClassDef> {
+    let rest = rest.trim();
+    let first_space = rest.find(' ')?;
+    let name = rest[..first_space].to_string();
+    let style = parse_style_props(&rest[first_space..]);
+    Some(ClassDef { name, style })
+}
+
+/// Parse CSS-like style properties: `fill:#f9f,stroke:#333,stroke-width:2px`
+fn parse_style_props(s: &str) -> NodeStyle {
+    let s = s.trim().trim_start_matches(',');
+    let mut style = NodeStyle::default();
+    for part in s.split(',') {
+        let part = part.trim();
+        if let Some(colon) = part.find(':') {
+            let key = part[..colon].trim();
+            let val = part[colon + 1..].trim().to_string();
+            if val.is_empty() { continue; }
+            match key {
+                "fill" => style.fill = Some(val),
+                "stroke" => style.stroke = Some(val),
+                "stroke-width" => style.stroke_width = Some(val),
+                "color" => style.color = Some(val),
+                _ => {}
+            }
+        }
+    }
+    style
 }
 
 fn parse_flow_direction(line: &str) -> FlowDirection {
