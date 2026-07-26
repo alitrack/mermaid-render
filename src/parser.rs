@@ -282,6 +282,25 @@ fn parse_style_props(s: &str) -> NodeStyle {
     style
 }
 
+
+/// Normalize class name: replace ~T~ with <T>
+fn normalize_class_name(name: &str) -> String {
+    let mut result = String::with_capacity(name.len());
+    let mut chars = name.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '~' {
+            result.push('<');
+            while let Some(&next) = chars.peek() {
+                if next == '~' { chars.next(); result.push('>'); break; }
+                result.push(chars.next().unwrap());
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
 fn parse_flow_direction(line: &str) -> FlowDirection {
     let line = line.to_lowercase();
     if line.contains("tb") || line.contains("td") {
@@ -842,6 +861,9 @@ fn parse_class(input: &str) -> Result<ClassDiagram, String> {
                 (rest.trim().to_string(), None)
             };
 
+            // Normalize generics: Foo~T~ → Foo<T>
+            let name = normalize_class_name(&name);
+
             // Check if it's a one-liner or has body
             if name.ends_with('{') {
                 current_class = Some(ClassDefinition {
@@ -854,7 +876,7 @@ fn parse_class(input: &str) -> Result<ClassDiagram, String> {
                 });
             } else {
                 classes.push(ClassDefinition {
-                    name,
+                    name: normalize_class_name(&name),
                     stereotype,
                     attributes: Vec::new(),
                     methods: Vec::new(),
