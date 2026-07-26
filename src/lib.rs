@@ -5,15 +5,21 @@
 //   let diagram = mermaid_rs::parse_mermaid("graph TD\n  A-->B")?;
 //   let svg = mermaid_rs::render_diagram(&diagram, &Default::default(), &mut mermaid_rs::EstimatedMeasure)?;
 
+mod error_svg;
 mod flowchart;
+#[cfg(feature = "font-measure")]
+mod font_measure;
 mod layout;
 mod parser;
 mod render;
 mod types;
 mod xml;
 
+pub use error_svg::render_error_svg;
 pub use parser::{parse_mermaid, MermaidDiagram};
 pub use render::{render_diagram, DiagramStyle};
+#[cfg(feature = "font-measure")]
+pub use font_measure::FontMeasure;
 
 /// Simple rectangle for geometry calculations in diagram layout.
 #[derive(Debug, Clone, Copy, PartialEq)]
