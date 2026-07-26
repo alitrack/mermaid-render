@@ -114,19 +114,19 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
         if let Some(parsed) = parse_edge_line(line) {
             // Register nodes if not already present (with full info including label and shape)
             if !node_labels.contains_key(&parsed.from.id) {
-                nodes.push(FlowchartNode {
-                    id: parsed.from.id.clone(),
-                    label: parsed.from.label.clone(),
-                    shape: parsed.from.shape,
-                });
+                nodes.push(FlowchartNode::new(
+                    parsed.from.id.clone(),
+                    parsed.from.label.clone(),
+                    parsed.from.shape,
+                ));
                 node_labels.insert(parsed.from.id.clone(), parsed.from.label.clone());
             }
             if !node_labels.contains_key(&parsed.to.id) {
-                nodes.push(FlowchartNode {
-                    id: parsed.to.id.clone(),
-                    label: parsed.to.label.clone(),
-                    shape: parsed.to.shape,
-                });
+                nodes.push(FlowchartNode::new(
+                    parsed.to.id.clone(),
+                    parsed.to.label.clone(),
+                    parsed.to.shape,
+                ));
                 node_labels.insert(parsed.to.id.clone(), parsed.to.label.clone());
             }
 
@@ -150,11 +150,7 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
                 min_length: 1,
             });
         } else if let Some((id, label, shape)) = parse_node_definition(line) {
-            nodes.push(FlowchartNode {
-                id: id.clone(),
-                label: label.clone(),
-                shape,
-            });
+            nodes.push(FlowchartNode::new(id.clone(), label.clone(), shape));
             node_labels.insert(id.clone(), label);
 
             // Add to current subgraph if in one
@@ -169,6 +165,9 @@ fn parse_flowchart(input: &str) -> Result<Flowchart, String> {
         nodes,
         edges,
         subgraphs,
+        class_defs: Vec::new(),
+        node_styles: Vec::new(),
+        link_styles: Vec::new(),
     })
 }
 

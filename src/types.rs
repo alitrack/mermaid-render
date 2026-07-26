@@ -39,6 +39,19 @@ pub struct FlowchartNode {
     pub id: String,
     pub label: String,
     pub shape: NodeShape,
+    /// CSS class names applied via `:::className` syntax
+    pub class_names: Vec<String>,
+}
+
+impl FlowchartNode {
+    pub fn new(id: String, label: String, shape: NodeShape) -> Self {
+        Self {
+            id,
+            label,
+            shape,
+            class_names: Vec::new(),
+        }
+    }
 }
 
 /// An edge connecting two nodes
@@ -53,6 +66,43 @@ pub struct FlowchartEdge {
     pub min_length: usize,
 }
 
+/// A complete flowchart diagram
+#[derive(Debug, Clone)]
+pub struct Flowchart {
+    pub direction: FlowDirection,
+    pub nodes: Vec<FlowchartNode>,
+    pub edges: Vec<FlowchartEdge>,
+    pub subgraphs: Vec<Subgraph>,
+    /// Class definitions: `classDef className fill:...`
+    pub class_defs: Vec<ClassDef>,
+    /// Inline node styles: `style nodeId fill:...`
+    pub node_styles: Vec<(String, NodeStyle)>,
+    /// Link styles: `linkStyle N stroke:...`
+    pub link_styles: Vec<LinkStyleDef>,
+}
+
+impl Flowchart {
+    pub fn new(direction: FlowDirection) -> Self {
+        Self {
+            direction,
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            subgraphs: Vec::new(),
+            class_defs: Vec::new(),
+            node_styles: Vec::new(),
+            link_styles: Vec::new(),
+        }
+    }
+}
+
+/// A subgraph (grouped nodes)
+#[derive(Debug, Clone)]
+pub struct Subgraph {
+    pub id: String,
+    pub title: String,
+    pub nodes: Vec<String>,
+}
+
 /// Direction of flowchart
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FlowDirection {
@@ -62,21 +112,32 @@ pub enum FlowDirection {
     RightLeft,
 }
 
-/// A complete flowchart diagram
-#[derive(Debug, Clone)]
-pub struct Flowchart {
-    pub direction: FlowDirection,
-    pub nodes: Vec<FlowchartNode>,
-    pub edges: Vec<FlowchartEdge>,
-    pub subgraphs: Vec<Subgraph>,
+// ============================================
+// Style Types
+// ============================================
+
+/// Inline style for a node: `style nodeId fill:#f9f,stroke:#333`
+#[derive(Debug, Clone, Default)]
+pub struct NodeStyle {
+    pub fill: Option<String>,
+    pub stroke: Option<String>,
+    pub stroke_width: Option<String>,
+    pub color: Option<String>,
 }
 
-/// A subgraph (grouped nodes)
+/// Class definition: `classDef className fill:#f9f,stroke:#333`
 #[derive(Debug, Clone)]
-pub struct Subgraph {
-    pub id: String,
-    pub title: String,
-    pub nodes: Vec<String>,
+pub struct ClassDef {
+    pub name: String,
+    pub style: NodeStyle,
+}
+
+/// Link style: `linkStyle 0 stroke:#f00,stroke-width:3px`
+#[derive(Debug, Clone)]
+pub struct LinkStyleDef {
+    pub index: usize,
+    pub stroke: Option<String>,
+    pub stroke_width: Option<String>,
 }
 
 // ============================================
@@ -156,7 +217,7 @@ pub struct SequenceDiagram {
 // Class Diagram Types
 // ============================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Visibility {
     Public,
     Private,
